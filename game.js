@@ -1,6 +1,17 @@
 const canvas = document.getElementById('gameCanvas');
 const gl = canvas.getContext('webgl');
 
+let player = {
+    x: 0,
+    y: 0,
+    z: 0,
+    speed: 0.1,
+    pitch: 0,
+    yaw: 0
+};
+
+let world = []; // Array to hold the world blocks
+
 // Basic setup for a 3D perspective
 function init() {
     canvas.width = window.innerWidth;
@@ -19,9 +30,13 @@ function init() {
     // Set up event listeners for block placing/breaking
     document.addEventListener('click', handleClick);
     document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('mousemove', handleMouseMove);
 
     // Connect to the WebSocket server for multiplayer support
     connectToServer();
+
+    // Lock the mouse cursor
+    canvas.requestPointerLock();
 }
 
 // Function for loading the player skin
@@ -62,8 +77,6 @@ function addBlock(x, y, z, type) {
     world.push(block); // Add the block to the world array
 }
 
-const world = []; // Array to hold the world blocks
-
 // Handles click events for breaking and placing blocks
 function handleClick(event) {
     const ray = getRayFromMouse(event);
@@ -71,9 +84,11 @@ function handleClick(event) {
     if (block) {
         // Remove the block if it exists
         removeBlock(block);
+        sendBlockUpdate('remove', block);
     } else {
         // Place a new block at the clicked position
         placeBlock(ray);
+        sendBlockUpdate('place', { x: ray.x, y: ray.y, z: ray.z, type: 'stone' });
     }
 }
 
@@ -90,7 +105,7 @@ function getBlockAtRay(ray) {
     // Implement logic to find the block at the given ray
     // This is a simplified example and may need adjustment
     const blockSize = 1; // Assuming blocks are 1x1x1
-    const origin = { x: 0, y: 0, z: 0 }; // Player's position
+    const origin = { x: player.x, y: player.y, z: player.z }; // Player's position
     const direction = { x: ray.x, y: ray.y, z: 0 }; // Ray direction
 
     for (let block of world) {
@@ -132,7 +147,7 @@ function placeBlock(ray) {
     // Implement logic to place a block at the given ray position
     // This is a simplified example and may need adjustment
     const blockSize = 1; // Assuming blocks are 1x1x1
-    const origin = { x: 0, y: 0, z: 0 }; // Player's position
+    const origin = { x: player.x, y: player.y, z: player.z }; // Player's position
     const direction = { x: ray.x, y: ray.y, z: 0 }; // Ray direction
 
     const t = (origin.y - 1) / direction.y; // Place block below the player
@@ -163,36 +178,47 @@ function handleKeyDown(event) {
     }
 }
 
-let player = {
-    x: 0,
-    y: 0,
-    z: 0,
-    speed: 0.1
-};
-
 // Function for player movement forward
 function moveForward() {
-    player.z -= player.speed;
+    player.z -= player.speed * Math.sin(player.yaw);
+    player.x -= player.speed * Math.cos(player.yaw);
+    sendPlayerMove();
 }
 
 // Function for player movement backward
 function moveBackward() {
-    player.z += player.speed;
+    player.z += player.speed * Math.sin(player.yaw);
+    player.x += player.speed * Math.cos(player.yaw);
+    sendPlayerMove();
 }
 
 // Function for player movement left
 function moveLeft() {
-    player.x -= player.speed;
+    player.z -= player.speed * Math.cos(player.yaw);
+    player.x += player.speed * Math.sin(player.yaw);
+    sendPlayerMove();
 }
 
 // Function for player movement right
 function moveRight() {
-    player.x += player.speed;
+    player.z += player.speed * Math.cos(player.yaw);
+    player.x -= player.speed * Math.sin(player.yaw);
+    sendPlayerMove();
 }
 
 // Function for player jump
 function jump() {
     player.y += 1; // Simple jump logic
+    sendPlayerMove();
+}
+
+// Function to handle mouse movement
+function handleMouseMove(event) {
+    if (document.pointerLockElement === canvas) {
+        player.yaw += event.movementX * 0.002;
+        player.pitch += event.movementY * 0.002;
+        sendPlayerMove();
+    }
 }
 
 // Connect to the WebSocket server for multiplayer support
@@ -214,12 +240,37 @@ function handleServerMessage(message) {
             // Handle a player leaving the game
             break;
         case 'blockUpdate':
-            // Handle updates to the game world (block changes)
+            handleBlockUpdate(data);
             break;
         case 'playerMove':
-            // Handle player movement updates
+            handlePlayerMove(data);
             break;
     }
+}
+
+function handleBlockUpdate(data) {
+    if (data.action === 'place') {
+        addBlock(data.block.x, data.block.y, data.block.z, data.block.type);
+    } else if (data.action === 'remove') {
+        const block = world.find(b => b.x === data.block.x && b.y === data.block.y && b.z === data.block.z);
+        if (block) {
+            removeBlock(block);
+        }
+    }
+}
+
+function handlePlayerMove(data) {
+    if (data.playerId !== playerId) {
+        // Update other player's position
+    }
+}
+
+function sendPlayerMove() {
+    ws.send(JSON.stringify({ type: 'move', x: player.x, y: player.y, z: player.z, yaw: player.yaw, pitch: player.pitch }));
+}
+
+function sendBlockUpdate(action, block) {
+    ws.send(JSON.stringify({ type: 'blockUpdate', action: action, block: block }));
 }
 
 window.addEventListener('resize', () => {
