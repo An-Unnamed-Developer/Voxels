@@ -197,7 +197,7 @@ function jump() {
 
 // Connect to the WebSocket server for multiplayer support
 function connectToServer() {
-    const ws = new WebSocket("wss://aud.is-a.dev/code/proxy/3054/");
+    const ws = new WebSocket("wss://voxels.uk.to/");
     ws.onopen = () => console.log("Connected to server");
     ws.onmessage = (message) => handleServerMessage(message);
     ws.onerror = (error) => console.error("WebSocket Error: ", error);
